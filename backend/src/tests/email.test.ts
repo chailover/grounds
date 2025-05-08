@@ -1,6 +1,6 @@
 import request from 'supertest';
+import { Express } from 'express';
 import { google } from 'googleapis';
-import express from 'express';
 import { OAuth2Client } from 'google-auth-library';
 
 // Mock the googleapis
@@ -17,75 +17,50 @@ jest.mock('googleapis', () => ({
 }));
 
 describe('Email API', () => {
-  let app: express.Application;
+  let app: Express;
+  let mockOAuth2Client: OAuth2Client;
 
-  beforeEach(() => {
-    app = express();
-    app.use(express.json());
-    
-    // TODO: Add email route handler here
-    app.post('/api/send-email', async (req, res) => {
-      const { toEmail, subject, body } = req.body;
-      
-      try {
-        // Mock OAuth2 client
-        const oauth2Client = new OAuth2Client();
-        
-        // Create Gmail API client
-        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-        
-        // Create email message
-        const message = [
-          'Content-Type: text/plain; charset="UTF-8"\n',
-          'MIME-Version: 1.0\n',
-          `To: ${toEmail}\n`,
-          `Subject: ${subject}\n\n`,
-          body
-        ].join('');
-
-        const encodedMessage = Buffer.from(message)
-          .toString('base64')
-          .replace(/\+/g, '-')
-          .replace(/\//g, '_')
-          .replace(/=+$/, '');
-
-        // Send email
-        const response = await gmail.users.messages.send({
-          userId: 'me',
-          requestBody: {
-            raw: encodedMessage
-          }
-        });
-
-        res.json({ success: true, messageId: response.data.id });
-      } catch (error) {
-        res.status(500).json({ success: false, error: 'Failed to send email' });
-      }
-    });
+  beforeAll(() => {
+    // TODO: Initialize Express app and OAuth2 client
+    // This will be implemented when we create the actual endpoint
   });
 
-  it('should send an email successfully', async () => {
-    const emailData = {
+  describe('POST /api/send-email', () => {
+    const testEmail = {
       toEmail: 'test@example.com',
       subject: 'Test Subject',
       body: 'Test Body'
     };
 
-    const response = await request(app)
-      .post('/api/send-email')
-      .send(emailData);
+    it('should send email successfully', async () => {
+      const response = await request(app)
+        .post('/api/send-email')
+        .send(testEmail)
+        .expect(200);
 
-    expect(response.status).toBe(200);
-    expect(response.body.success).toBe(true);
-    expect(response.body.messageId).toBe('mock-message-id');
-  });
+      expect(response.body).toHaveProperty('messageId');
+      expect(response.body.messageId).toBe('mock-message-id');
+    });
 
-  it('should handle missing required fields', async () => {
-    const response = await request(app)
-      .post('/api/send-email')
-      .send({});
+    it('should handle invalid email data', async () => {
+      const response = await request(app)
+        .post('/api/send-email')
+        .send({})
+        .expect(400);
 
-    expect(response.status).toBe(500);
-    expect(response.body.success).toBe(false);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should handle Gmail API errors', async () => {
+      // Mock Gmail API error
+      (google.gmail().users.messages.send as jest.Mock).mockRejectedValueOnce(new Error('API Error'));
+
+      const response = await request(app)
+        .post('/api/send-email')
+        .send(testEmail)
+        .expect(500);
+
+      expect(response.body).toHaveProperty('error');
+    });
   });
 }); 
